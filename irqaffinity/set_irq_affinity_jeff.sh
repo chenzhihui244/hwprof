@@ -30,7 +30,6 @@ if [ "$1" = "" ] ; then
         echo "    $0 eth0 [eth1 eth2 eth3]"
 fi
 
-
 # check for irqbalance running
 IRQBALANCE_ON=`ps ax | grep -v grep | grep -q irqbalance; echo $?`
 if [ "$IRQBALANCE_ON" == "0" ]; then
@@ -51,10 +50,10 @@ set_affinity()
 	local IRQ=$4
 	local POS=$[$VEC%$CORENUM]
 
-	MASK=$((1<<$CORENUM))
-    printf "DEV:%s DIR:%s VEC:$VEC POS:$POS MASK:0x%X IRQ:%d\n" $DEV $DIR $VEC $POS $MASK $IRQ
-    TMP=`printf "%X" $MASK`
-	#echo $TMP|sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
+	MASK=$((1<<$POS))
+	printf "DEV:%s DIR:%s VEC:%d POS:%d MASK:0x%X IRQ:%d\n" $DEV $DIR $VEC $POS $MASK $IRQ
+	TMP=`printf "%X" $MASK`
+	echo $TMP|sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
 }
 
 set_affinity_dir()
@@ -62,7 +61,7 @@ set_affinity_dir()
 	local DEV=$1
 	local DIR=$2
 
-	MAX=`grep $DEV-$DIR /proc/interrupts | wc -l`
+	MAX=`grep -i $DEV-$DIR /proc/interrupts | wc -l`
 	if [ "$MAX" == "0" ] ; then
 		MAX=`egrep -i "$DEV:.*$DIR" /proc/interrupts | wc -l`
 	fi
@@ -97,10 +96,10 @@ set_affinity_dir()
 DEV=${1}
 CORENUM=${2:-`nproc`}
 
-set_affinity_dir DEV TxRx
+set_affinity_dir $DEV TxRx
 if [ $? == 0 ]; then
 	exit
 fi
 
-set_affinity_dir DEV Tx
-set_affinity_dir DEV Rx
+set_affinity_dir $DEV Tx
+set_affinity_dir $DEV Rx
