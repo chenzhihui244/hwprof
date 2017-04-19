@@ -48,10 +48,10 @@ set_affinity()
 	local DIR=$2
 	local VEC=$3
 	local IRQ=$4
-	local POS=$[$VEC%$CORENUM]
+	local POS=$[($VEC%$CORENUM)+$COREOFF]
 
 	MASK=$((1<<$POS))
-	printf "DEV:%s DIR:%s VEC:%d POS:%d MASK:0x%X IRQ:%d\n" $DEV $DIR $VEC $POS $MASK $IRQ
+	printf "DEV:%s DIR:%s VEC:%d OFF:%d POS:%d MASK:0x%X IRQ:%d\n" $DEV $DIR $VEC $COREOFF $POS $MASK $IRQ
 	TMP=`printf "%X" $MASK`
 	echo $TMP|sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
 }
@@ -95,6 +95,7 @@ set_affinity_dir()
 
 DEV=${1}
 CORENUM=${2:-`nproc`}
+COREOFF=${3:-0}
 
 set_affinity_dir $DEV TxRx
 if [ $? == 0 ]; then
