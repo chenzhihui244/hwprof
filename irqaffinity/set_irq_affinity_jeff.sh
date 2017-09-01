@@ -48,10 +48,12 @@ set_affinity()
 	local DIR=$2
 	local VEC=$3
 	local IRQ=$4
-	local POS=$[($VEC%$CORENUM)+$COREOFF]
+	local START=$5
+	local POS=$[($VEC+$START+$COREOFF)%$CORENUM]
+	#local POS=$[($VEC%$CORENUM)+$COREOFF]
 
 	MASK=$((1<<$POS))
-	printf "DEV:%s DIR:%s VEC:%d OFF:%d POS:%d MASK:0x%X IRQ:%d\n" $DEV $DIR $VEC $COREOFF $POS $MASK $IRQ
+	printf "DEV:%s DIR:%s VEC:%d IRQ:%d OFF:%d POS:%d MASK:0x%X\n" $DEV $DIR $VEC $IRQ $COREOFF $POS $MASK
 	TMP=`printf "%X" $MASK`
 	echo $TMP|sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
 }
@@ -60,6 +62,7 @@ set_affinity_dir()
 {
 	local DEV=$1
 	local DIR=$2
+	local FIRST=${3:-0}
 
 	MAX=`grep -i $DEV-$DIR /proc/interrupts | wc -l`
 	if [ "$MAX" == "0" ] ; then
@@ -70,24 +73,24 @@ set_affinity_dir()
 		return 1
 	fi
 
-	(( MAX-- ))
-	for VEC in `seq 0 1 $MAX`
+	((LAST=MAX-1))
+	for VEC in `seq 0 1 $LAST`
 	do
 		IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR$VEC"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ
+			set_affinity $DEV $DIR $VEC $IRQ $FIRST
 			continue
 		fi
 
 		IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR-$VEC"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ
+			set_affinity $DEV $DIR $VEC $IRQ $FIRST
 			continue
 		fi
 
 		IRQ=`cat /proc/interrupts | egrep -i $DEV:v$VEC-$DIR"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ
+			set_affinity $DEV $DIR $VEC $IRQ $FIRST
 			continue
 		fi
 	done
@@ -103,4 +106,4 @@ if [ $? == 0 ]; then
 fi
 
 set_affinity_dir $DEV Tx
-set_affinity_dir $DEV Rx
+set_affinity_dir $DEV Rx 16

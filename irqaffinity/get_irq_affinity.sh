@@ -24,7 +24,7 @@
 
 get_affinity()
 {
-	echo -n "VEC=$VEC,IRQ=$IRQ,MASK=0x"
+	echo -n "$DEV-$DIR: VEC=$VEC,IRQ=$IRQ,MASK=0x"
     cat /proc/irq/$IRQ/smp_affinity
 #    TMP=`printf "%X" $MASK`
 #    echo $TMP |sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
