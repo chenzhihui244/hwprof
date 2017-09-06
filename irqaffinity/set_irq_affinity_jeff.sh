@@ -49,8 +49,9 @@ set_affinity()
 	local VEC=$3
 	local IRQ=$4
 	local START=$5
-	local POS=$[($VEC+$START+$COREOFF)%$CORENUM]
-	#local POS=$[($VEC%$CORENUM)+$COREOFF]
+	local CORETOTAL=`nproc`
+	#local POS=$[($VEC+$START+$COREOFF)%$CORENUM]
+	local POS=$[(($VEC%$CORENUM)+$COREOFF+$START)%$CORETOTAL]
 
 	MASK=$((1<<$POS))
 	printf "DEV:%s DIR:%s VEC:%d IRQ:%d OFF:%d POS:%d MASK:0x%X\n" $DEV $DIR $VEC $IRQ $COREOFF $POS $MASK
@@ -106,4 +107,5 @@ if [ $? == 0 ]; then
 fi
 
 set_affinity_dir $DEV Tx
-set_affinity_dir $DEV Rx 16
+set_affinity_dir $DEV Rx
+#set_affinity_dir $DEV Rx 16
