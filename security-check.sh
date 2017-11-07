@@ -188,12 +188,115 @@ function user_passwd_check {
 	awk -F: 'BEGIN {ret=0} ($1==U) && ($2=="") {ret=1} END {exit ret}' U=$user
 }
 
+# check system passwd setting, return 0 if ok, or return 1
 function system_passwd_check {
 	list=`user_list`
 	for user in $list; do
 		user_passwd_check $user
 		if [ $? -eq 0 ]; then echo "user $user ok"; else echo "user $user failed"; fi
 	done
+}
+
+# check shadow file permission, return 0 if ok, or return 1
+function system_shadow_perm_check {
+	local SHADOW_FILE=${1-/etc/shadow}
+	ls -l $SHADOW_FILE |
+	awk '{if ((substr($1,4,1) != "-") || (substr($1,6,5) != "-----")) exit 1; else exit 0}'
+}
+
+# check shadow file encryption setting, return 0 if ok, or return 1
+function system_shadow_encryption_check {
+	local CHECK_FILE=${1-/etc/pam.d/system-auth}
+	cat $CHECK_FILE |
+	awk 'BEGIN {ret=0} \
+	($1=="password") && ($2=="sufficient") && ($3=="pam_unix.so") \
+	{if ($0 ~ /md5 shadow/) ret=1; if ($0 !~ /sha512 shadow/) ret=1}
+	END {exit ret}'
+}
+
+# check whether rhosts file exist, return 0 if no exist, or return 1
+function system_rhosts_check {
+	local CHECK_FILE=${1-/root/.rhosts}
+	[ -e $CHECK_FILE ] && return 1 || return 0
+}
+
+# check netrc file, return 0 if ok, or return 1
+function system_netrc_check {
+	local CHECK_FILE=${1-/root/.netrc}
+	if [ -e $CHECK_FILE ]; then
+		perm=`ls -l $CHECK_FILE | awk '{print $1}'`
+		echo "${perm:3}"
+		[[ ${perm:1} != "-------" ]] || return 1
+	fi
+	return 0
+}
+
+function system_root_perm_check {
+	perm=`ls -la / | awk '($9=="."){print $1}'`
+	[[ ${perm:8:1} == "w" ]] && return 1 || return 0
+}
+
+function system_usr_perm_check {
+	perm=`ls -l / | awk '($9=="usr"){print $1}'`
+	echo $perm
+	[[ ${perm:8:1} == "w" ]] && return 1 || return 0
+}
+
+function system_etc_perm_check {
+	perm=`ls -l / | awk '($9=="etc"){print $1}'`
+	echo $perm
+	[[ ${perm:8:1} == "w" ]] && return 1 || return 0
+}
+
+function system_var_log_perm_check {
+	perm=`ls -l /var | awk '($9=="log"){print $1}'`
+	[[ ${perm:8:1} == "w" ]] && return 1 || return 0
+}
+
+function system_tmp_perm_check {
+	perm=`ls -l / | awk '($9=="tmp"){print $1}'`
+	echo $perm
+	[[ ${perm:1:9} == "rwxrwxrwt" ]] && return 0 || return 1
+}
+
+function system_snmpd_perm_check {
+	CHECK_FILE=/etc/snmp/snmpd.conf
+	if [ -e $CHECK_FILE ]; then
+		perm=`ls -l $CHECK_FILE | awk '{print $1}'`
+		#echo $perm
+		[[ ${perm:3:1} != "-" ]] && return 1
+		[[ ${perm:5:5} != "-----" ]] && return 1
+	fi
+	return 0
+}
+
+function ssh_login_retries_check {
+	CHECK_FILE=/etc/ssh/sshd_config
+	
+	grep -q "^MaxAuthTries 2$" $CHECK_FILE
+}
+
+# check /etc/rsyslog.conf, ok return 0, or return 1
+function system_rsyslog_check {
+	CHECK_FILE=/etc/rsyslog.conf
+
+	cat $CHECK_FILE |
+	awk 'BEGIN {TEST1=1; TEST2=1} \
+	($1 ~ /^\*\.info;mail\.none;authpriv\.none\>/) && ($2 ~ /\<var\/log\/messages$/) {TEST1=0}; \
+	($1 ~ /^authpriv\.\*/) && ($2 ~ /\<var\/log\/secure$/) {TEST2=0} \
+	END {if ((TEST1==0) && (TEST2==0)) exit 0; else exit 1}'
+}
+
+function system_wtmp_check {
+	test -e /var/log/wtmp
+}
+
+function system_messages_check {
+	test -e /var/log/messages
+}
+
+function system_secure_check {
+	test -e /var/log/secure
 }
 
 function exprie_time_check {
@@ -219,6 +322,107 @@ function exprie_time_check1 {
 	done
 }
 
+function system_log_rotate_check {
+	local CHECK_FILE=${1-/etc/logrotate.conf}
+
+	cat $CHECK_FILE |
+	awk 'BEGIN {MOK=1; ROK=1} \
+	$0 ~ /^monthly$/ {MOK=0}; \
+	($1=="rotate") && ($2>=3) {ROK=0}; \
+	$0 ~ /{/ {exit 0} \
+	END {if((MOK==0) && (ROK==0)) exit 0; else exit 1}'
+}
+
+# check wtmp config at /etc/logrotate.conf, return 0 if ok
+function system_wtmp_rotate_check {
+	local CHECK_FILE=${1-/etc/logrotate.conf}
+
+	cat $CHECK_FILE |
+	awk 'BEGIN {FOUND=1; MOK=1; ROK=1} \
+	$0 ~ /^\/var\/log\/wtmp {$/ {FOUND=0}; \
+	($1=="monthly") {if (FOUND==0) MOK=0}; \
+	($1=="rotate") && ($2>=3) {if (FOUND==0) ROK=0}; \
+	$0 ~ /}/ {if (FOUND==0) exit 0} \
+	END {if((MOK==0) && (ROK==0)) exit 0; else exit 1}'
+}
+
+function system_host_check {
+	local CHECK_FILE=${1-/etc/host.conf}
+
+	grep -q "nospoof on" $CHECK_FILE
+}
+
+function system_export_check {
+	CHECK_FILE=/etc/exports
+	[[ -e $CHECK_FILE ]] || return 1
+	perm=`ls -l $CHECK_FILE | awk '{print $1}'`
+	[[ ${perm:1:9} == "rw-r--r--" ]] || return 1
+}
+
+# check if service exists, return 1 if exist, or return 0
+function service_check {
+	SERVICE=$1
+	systemctl list-units -t service | grep ${SERVICE} > /dev/null 2>&1 && return 1
+	systemctl list-unit-files | grep ${SERVICE} > /dev/null 2>&1 && return 1
+	return 0
+}
+
+function system_synccookies_check {
+	CHECK_FILE=${1-/etc/sysctl.conf}
+
+	awk -F= 'BEGIN {ret=1} \
+	($1 ~ /^net\.ipv4\.tcp_syncookies/) {if ($2==1) ret=0} \
+	END {exit ret}' $CHECK_FILE
+}
+
+function system_icmp_check {
+	CHECK_FILE=${1-/etc/sysctl.conf}
+
+	awk -F= 'BEGIN {ret=1} \
+	($1 ~ /^net\.ipv4\.icmp_echo_ignore_broadcasts/) {if ($2==1) ret=0} \
+	END {exit ret}' $CHECK_FILE
+}
+
+function system_redirect_check {
+	CHECK_FILE=${1-/etc/sysctl.conf}
+
+	awk -F= 'BEGIN {ret=1} \
+	($1 ~ /^net\.ipv4\.conf\.all\.accept_redirects/) {if ($2==0) ret=0} \
+	END {exit ret}' $CHECK_FILE
+}
+
+function system_hosts_equiv_check {
+	[[ -e /etc/hosts.equiv ]] && return 1 || return 0
+}
+
+function ssh_protocol_version_check {
+	local CHECK_FILE=${1-/etc/ssh/sshd_config}
+	cat $CHECK_FILE |
+	awk 'BEGIN {ret=1} \
+	($1=="Protocol") {if($2==2) ret=0} \
+	END {exit ret}'
+}
+
+function ssh_pam_check {
+	local CHECK_FILE=${1-/etc/ssh/sshd_config}
+	cat $CHECK_FILE |
+	awk 'BEGIN {ret=1} \
+	($1=="UsePAM") {if($2=="yes") ret=0} \
+	END {exit ret}'
+}
+
+function do_check {
+	echo -e "\n======================"
+	if ! eval "$@"; then
+		echo >&2 "Check failed \"$@\""
+		exit 1
+	else
+		echo >&2 "Check OK \"$@\""
+	fi
+	echo -e "======================\n"
+
+}
+
 #if ! uid_check; then
 #	echo "uid_check failed"
 #else
@@ -228,20 +432,40 @@ function exprie_time_check1 {
 #echo -e "\n===========\nuid_check\n===========\n"
 #uid_check
 
-#pass_max_days_check
-#shadow_pass_max_days_list
-#minilen_minclass_check
-#remember_check
-#exprie_time_check
-
-#system_user_passwd_check
-#system_tmout_check
-#ctrlaltdel_check
-#system_motd_check
-#system_umask_check
-system_passwd_check
-if [ $? -eq 0 ]; then
-	echo "system_passwd_check ok"
-else
-	echo "system_passwd_check failed"
-fi
+do_check minilen_minclass_check
+do_check remember_check
+do_check exprie_time_check
+do_check system_user_passwd_check
+do_check system_tmout_check
+do_check ctrlaltdel_check
+do_check system_motd_check
+do_check system_umask_check
+do_check system_passwd_check
+do_check system_shadow_perm_check
+do_check system_shadow_encryption_check
+do_check system_rhosts_check
+do_check system_netrc_check
+do_check system_root_perm_check
+do_check system_usr_perm_check
+do_check system_var_log_perm_check
+do_check system_tmp_perm_check
+do_check system_snmpd_perm_check
+do_check ssh_login_retries_check
+do_check system_rsyslog_check
+do_check system_wtmp_check
+do_check system_messages_check
+do_check system_secure_check
+do_check system_log_rotate_check
+do_check system_wtmp_rotate_check
+do_check system_host_check
+do_check system_export_check
+do_check service_check sendmail
+do_check service_check pppoe
+do_check service_check zebra
+do_check service_check isdn
+do_check system_synccookies_check
+do_check system_icmp_check
+do_check system_redirect_check
+do_check system_hosts_equiv_check
+do_check ssh_protocol_version_check
+do_check ssh_pam_check
