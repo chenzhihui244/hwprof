@@ -8,19 +8,19 @@
 # more /etc/passwd | awk -F: '{if ($3 == 0) {++uid[$3]}} END {for(key in uid) print key,"\t",uid[key]}'
 # more /etc/passwd | awk -F: '{++uid[$3]} END {for(key in uid) {if(uid[key]>1) {print "uid " key " duped " uid[key] " times"}}}'
 
-function uid_dup_check {
+function system_uid_dup_check {
 	UID_FILE=${1-/etc/passwd}
 	cat $UID_FILE | 
-		awk -F: '{++stats[$3]} 
-		END {for(uid in stats) 
-		{if(stats[uid]>1) {printf "uid(%d) duplicate(%d)\n", 
-			uid, stats[uid]; exit 1 }}}'
+	awk -F: 'BEGIN {ret=0} \
+	{++stats[$3]} 
+	END {for(uid in stats) {if(stats[uid]>1) ret=1}; exit ret}'
 }
 
 function pass_max_days_check {
 	local LOGIN_FILE=${1-/etc/login.defs}
-	awk '/^PASS_MAX_DAYS/ { if ($2>180) {printf "PASS_MAX_DAYS(%d) violated\n", $2} }'
-		$LOGIN_FILE
+	awk 'BEGIN {ret=1} \
+	/^PASS_MAX_DAYS/ { if ($2<=180) {ret=0} } \
+	END {exit ret}' $LOGIN_FILE
 }
 
 # return user list
@@ -61,7 +61,7 @@ function user_id_lock_check {
 		END {exit ret}' U=$user
 }
 
-# check whether user passwd expire setting is ok,
+# check whether user passwd expiry setting is ok,
 # requirement:
 #   expire days < 180, or
 #   user id locked, or
@@ -72,57 +72,39 @@ function user_expire_shell_check {
 	local nologin_shell="/sbin/nologin"
 	local false_shell="/bin/false"
 
-	if user_shadow_pass_max_days_check $user; then
-		echo "$user user_shadow_pass_max_days_check ok"
-		return 0
-	fi
-
-	if user_id_lock_check $user; then
-		echo "$user user_id_lock_check ok"
-		return 0
-	fi
-
-	if user_shell_check $user $nologin_shell ; then
-		echo "$user user_shell_check $nologin_shell ok"
-		return 0
-	fi
-
-	if user_shell_check $user $false_shell; then
-		echo "$user user_shell_check $false_shell ok"
-		return 0
-	fi
-
+	user_shadow_pass_max_days_check $user && return 0
+	user_id_lock_check $user && return 0
+	user_shell_check $user $nologin_shell && return 0
+	user_shell_check $user $false_shell && return 0
 	return 1
 }
 
 function system_user_passwd_check {
 	list=`user_list`
 	for u in $list; do
-		if user_expire_shell_check $u; then
-			echo  "$u ok"
-		else
-			echo  "$u failed"
-		fi
+		user_expire_shell_check $u || return 1
 	done
+	return 0
 }
 
+# FIXME: minlen>8
 function minilen_minclass_check {
 	local CHECK_FILE=${1-/etc/pam.d/system-auth}
 	cat $CHECK_FILE |
-	awk ' BEGIN {ok=0}
-	/dcredit=0/ && /ucredit=0/ && /ocredit=0/ && /lcredit=0/ && /passworld/ && /requisite/ && /pam_pwquality.so/ && /minclass=3/ && /minlen=8/ { ok=1 }
-	END { if (ok==1) {print "OK"} else {print "FAILED"} } '
-
-	#cat $CHECK_FILE | awk '{ if (($1=="password") && ($2=="requisite") && ($3=="pam_pwquality.so")) 
-	#{ printf "echo %s\n", $6 } }' | sh 
+	awk ' BEGIN {ret=1}
+	/^password/ && /requisite/ && /pam_pwquality\.so/ && /dcredit=0/ && /ucredit=0/ && /ocredit=0/ && /lcredit=0/ && /minclass=3/ && /minlen=/ \
+	{for(i=1;i<=NF;i++) {if ($i ~ /minlen=/) {day=substr($i,8); if(day>=8) ret=0}}}
+	END {exit ret} '
 }
 
+# FIXME: remember>5
 function remember_check {
 	local CHECK_FILE=${1-/etc/pam.d/system-auth}
 	cat $CHECK_FILE |
-	awk ' BEGIN {ok=0}
-	/password/ && /sufficient/ && /remember=5/ {print "check ok"; exit 0}
-	END {if (ok==1) {print "check OK"} else {print "check FAILED"} } '
+	awk ' BEGIN {ret=1}
+	/^password/ && /sufficient/ && /pam_unix\.so/ && /remember=/ \
+	{for(i=1;i<=NF;i++) {if ($i ~ /remember=/) {day=substr($i,10); if(day>=5) ret=0}}}
+	END {exit ret} '
 }
 
 #check ssh auth file, return 0 if not exist or empty, or return 1
@@ -144,9 +126,7 @@ function system_tmout_check {
 	grep -q "export TMOUT" $CHECK_FILE || return 1
 
 	cat $CHECK_FILE | \
-	awk -F= 'BEGIN {ret=1} ($1=="TMOUT") && ($2<=TO) {ret=0} END {exit ret}' TO=$timeout && return 0
-
-	return 1
+	awk -F= 'BEGIN {ret=1} ($1=="TMOUT") && ($2<=TO) {ret=0} END {exit ret}' TO=$timeout
 }
 
 # check if ctrl-alt-del target exist, return 1 if exist, or return 0
@@ -183,17 +163,17 @@ function user_passwd_check {
 	local PASSWD_FILE=/etc/passwd
 	local SHADOW_FILE=/etc/shadow
 	cat $PASSWD_FILE |
-	awk -F: 'BEGIN {ret=0} ($1==U) && ($2!="x") {ret=1} END {exit ret}' U=$user || return 1
+	awk -F: 'BEGIN {ret=1} ($1==U) && ($2=="x") {ret=0} END {exit ret}' U=$user || return 1
 	cat $SHADOW_FILE |
-	awk -F: 'BEGIN {ret=0} ($1==U) && ($2=="") {ret=1} END {exit ret}' U=$user
+	awk -F: 'BEGIN {ret=1} ($1==U) && ($2!="") {ret=0} END {exit ret}' U=$user
 }
 
 # check system passwd setting, return 0 if ok, or return 1
 function system_passwd_check {
 	list=`user_list`
 	for user in $list; do
-		user_passwd_check $user
-		if [ $? -eq 0 ]; then echo "user $user ok"; else echo "user $user failed"; fi
+		user_passwd_check $user || return 1
+		#if [ $? -eq 0 ]; then echo "user $user ok"; else echo "user $user failed"; fi
 	done
 }
 
@@ -201,16 +181,16 @@ function system_passwd_check {
 function system_shadow_perm_check {
 	local SHADOW_FILE=${1-/etc/shadow}
 	ls -l $SHADOW_FILE |
-	awk '{if ((substr($1,4,1) != "-") || (substr($1,6,5) != "-----")) exit 1; else exit 0}'
+	awk '{if ((substr($1,4,1) == "-") && (substr($1,6,5) == "-----")) exit 0; else exit 1}'
 }
 
 # check shadow file encryption setting, return 0 if ok, or return 1
 function system_shadow_encryption_check {
 	local CHECK_FILE=${1-/etc/pam.d/system-auth}
 	cat $CHECK_FILE |
-	awk 'BEGIN {ret=0} \
+	awk 'BEGIN {ret=1} \
 	($1=="password") && ($2=="sufficient") && ($3=="pam_unix.so") \
-	{if ($0 ~ /md5 shadow/) ret=1; if ($0 !~ /sha512 shadow/) ret=1}
+	{if ($0 ~ /sha512 shadow/) ret=0; if ($0 ~ /md5 shadow/) ret=1} \
 	END {exit ret}'
 }
 
@@ -225,8 +205,7 @@ function system_netrc_check {
 	local CHECK_FILE=${1-/root/.netrc}
 	if [ -e $CHECK_FILE ]; then
 		perm=`ls -l $CHECK_FILE | awk '{print $1}'`
-		echo "${perm:3}"
-		[[ ${perm:1} != "-------" ]] || return 1
+		[[ ${perm:2:8} == "--------" ]] || return 1
 	fi
 	return 0
 }
@@ -238,7 +217,6 @@ function system_root_perm_check {
 
 function system_usr_perm_check {
 	perm=`ls -l / | awk '($9=="usr"){print $1}'`
-	echo $perm
 	[[ ${perm:8:1} == "w" ]] && return 1 || return 0
 }
 
@@ -255,7 +233,6 @@ function system_var_log_perm_check {
 
 function system_tmp_perm_check {
 	perm=`ls -l / | awk '($9=="tmp"){print $1}'`
-	echo $perm
 	[[ ${perm:1:9} == "rwxrwxrwt" ]] && return 0 || return 1
 }
 
@@ -299,35 +276,13 @@ function system_secure_check {
 	test -e /var/log/secure
 }
 
-function exprie_time_check {
-	local CHECK_FILE=${1-/etc/passwd}
-	local expire_user_list=`shadow_pass_max_days_list`
-	for u in $expire_user_list; do
-		cat $CHECK_FILE |
-		awk -F: '(($7 !~ /\/sbin\/nologin/) && ($7 !~ /\/bin\/false/)) && ($1 ~ USERNAME) \
-		{ printf "user(%s) expire days > 180\n", $1 }' \
-		USERNAME=$u
-	done
-}
-
-function exprie_time_check1 {
-	local user_list=`user_shell_check`
-	local SHADOW_FILE=${1-/etc/shadow}
-
-	for i in $user_list; do
-		echo $i
-		awk -F: '$1 ~ USERNAME {print $0}' USERNAME=$i $SHADOW_FILE
-		#awk -F: '{if ($1==USERNAME) {print $0}}' USERNAME=$i $SHADOW_FILE
-		#awk -F: -v USERNAME=sync '{if ($1==USERNAME) {print USERNAME}}' USERNAME=sync $SHADOW_FILE
-	done
-}
-
 function system_log_rotate_check {
 	local CHECK_FILE=${1-/etc/logrotate.conf}
 
 	cat $CHECK_FILE |
 	awk 'BEGIN {MOK=1; ROK=1} \
 	$0 ~ /^monthly$/ {MOK=0}; \
+	$0 ~ /^weekly$/ {MOK=1}; \
 	($1=="rotate") && ($2>=3) {ROK=0}; \
 	$0 ~ /{/ {exit 0} \
 	END {if((MOK==0) && (ROK==0)) exit 0; else exit 1}'
@@ -355,6 +310,7 @@ function system_host_check {
 function system_export_check {
 	CHECK_FILE=/etc/exports
 	[[ -e $CHECK_FILE ]] || return 1
+	[[ `ls -l $CHECK_FILE | awk '{print $3}'` == "root" ]] || return 1
 	perm=`ls -l $CHECK_FILE | awk '{print $1}'`
 	[[ ${perm:1:9} == "rw-r--r--" ]] || return 1
 }
@@ -362,8 +318,8 @@ function system_export_check {
 # check if service exists, return 1 if exist, or return 0
 function service_check {
 	SERVICE=$1
-	systemctl list-units -t service | grep ${SERVICE} > /dev/null 2>&1 && return 1
-	systemctl list-unit-files | grep ${SERVICE} > /dev/null 2>&1 && return 1
+	systemctl list-units -t service | grep -q ${SERVICE} && return 1
+	systemctl list-unit-files | grep -q ${SERVICE} && return 1
 	return 0
 }
 
@@ -399,7 +355,7 @@ function ssh_protocol_version_check {
 	local CHECK_FILE=${1-/etc/ssh/sshd_config}
 	cat $CHECK_FILE |
 	awk 'BEGIN {ret=1} \
-	($1=="Protocol") {if($2==2) ret=0} \
+	($1=="Protocol") {if($2>=2) ret=0} \
 	END {exit ret}'
 }
 
@@ -423,19 +379,12 @@ function do_check {
 
 }
 
-#if ! uid_check; then
-#	echo "uid_check failed"
-#else
-#	echo "uid_check ok"
-#fi
-
-#echo -e "\n===========\nuid_check\n===========\n"
-#uid_check
-
+do_check system_uid_dup_check
+do_check pass_max_days_check
 do_check minilen_minclass_check
 do_check remember_check
-do_check exprie_time_check
 do_check system_user_passwd_check
+do_check system_ssh_auth_check
 do_check system_tmout_check
 do_check ctrlaltdel_check
 do_check system_motd_check
@@ -459,8 +408,10 @@ do_check system_log_rotate_check
 do_check system_wtmp_rotate_check
 do_check system_host_check
 do_check system_export_check
-do_check service_check sendmail
+do_check service_check bootps
+do_check service_check pure-ftpd
 do_check service_check pppoe
+do_check service_check sendmail
 do_check service_check zebra
 do_check service_check isdn
 do_check system_synccookies_check
