@@ -367,6 +367,38 @@ function ssh_pam_check {
 	END {exit ret}'
 }
 
+function ftp_anonymous_check {
+	local CHECK_FILE=${1-/etc/vsftpd/vsftpd.conf}
+
+	[ -e $CHECK_FILE ] || return 0
+	cat $CHECK_FILE |
+	awk -F= 'BEGIN {ret=1} \
+	($1=="anonymous_enable") {if(toupper($2)!="YES") ret=0} \
+	END {exit ret}'
+}
+
+# return 0 if userlist_deny=NO, or return 1
+function ftp_userlist_deny_no_check {
+	CHECK_FILE=${1-/etc/vsftpd/vsftpd.conf}
+	cat $CHECK_FILE |
+	awk -F= 'BEGIN {ret=1} \
+	($1=="userlist_deny") {if(toupper($2)=="NO") ret=0} \
+	END {exit ret}'
+}
+
+function ftp_root_check {
+	local ULIST_FILE=/etc/vsftpd/user_list
+
+	grep -q "^root$" /etc/vsftpd/ftpusers || return 1
+
+	if ftp_userlist_deny_no_check; then
+		grep -q "^root$" $ULIST_FILE && return 1
+	else
+		grep -q "^root$" $ULIST_FILE || return 1
+	fi
+	return 0
+}
+
 function do_check {
 	echo -e "\n======================"
 	if ! eval "$@"; then
@@ -378,6 +410,8 @@ function do_check {
 	echo -e "======================\n"
 
 }
+
+exit
 
 do_check system_uid_dup_check
 do_check pass_max_days_check
@@ -420,3 +454,5 @@ do_check system_redirect_check
 do_check system_hosts_equiv_check
 do_check ssh_protocol_version_check
 do_check ssh_pam_check
+do_check ftp_root_check
+do_check ftp_anonymous_check
