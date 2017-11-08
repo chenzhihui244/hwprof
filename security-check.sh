@@ -1,13 +1,5 @@
 #!/bin/sh
 
-# getent get username from uid
-# getent passwd 0
-# more /etc/passwd | awk -F: '{++uid[$3]} END {for(key in uid) print key,"\t",uid[key]}'
-# more /etc/passwd | awk -F: '$3==0 {++uid[$3]} END {for(key in uid) print key,"\t",uid[key]}'
-# more /etc/passwd | awk -F: 'BEGIN {print "uid\tcount"} {++uid[$3]} END {for(key in uid) print key,"\t",uid[key]}'
-# more /etc/passwd | awk -F: '{if ($3 == 0) {++uid[$3]}} END {for(key in uid) print key,"\t",uid[key]}'
-# more /etc/passwd | awk -F: '{++uid[$3]} END {for(key in uid) {if(uid[key]>1) {print "uid " key " duped " uid[key] " times"}}}'
-
 function system_uid_dup_check {
 	UID_FILE=${1-/etc/passwd}
 	cat $UID_FILE | 
@@ -410,8 +402,6 @@ function do_check {
 	echo -e "======================\n"
 
 }
-
-exit
 
 do_check system_uid_dup_check
 do_check pass_max_days_check
