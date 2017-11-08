@@ -142,7 +142,7 @@ function system_motd_check {
 	#local TMP_FILE=/etc/motd
 	local TMP_FILE=/tmp/msg
 	cat <<EOF > $TMP_FILE
-Huawei's internal systems must only be used for conducting
+Huawei's internal systems must only be used for conducting Huawei's business or for purposes authorized by Huawei management.Use is subject to audit at any time by Huawei management.
 EOF
 	md5sum $CHECK_FILE $TMP_FILE |
 	awk '(NR==1) {MD5_CHECK=$1} (NR==2) {MD5_TMP=$1} \
