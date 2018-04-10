@@ -23,8 +23,11 @@ get_irq_list_affinity() {
 }
 
 set_irq_list_affinity() {
+	local lo=$1
+	local up=$2
+	shift 2
 	local irq_list=$*
-	local cpu=$cpu_lo
+	local cpu=$lo
 	for irq in $irq_list; do
 		local pos=$(( 1<<cpu ))
 		local mask=`printf "%x" $pos`
@@ -33,17 +36,19 @@ set_irq_list_affinity() {
 		echo "$affinity" > /proc/irq/$irq/smp_affinity
 
 		let cpu=cpu+1
-		if (( cpu > cpu_up )); then
-			let cpu=cpu_lo
+		if (( cpu > up )); then
+			let cpu=lo
 		fi
 	done
 }
 
 set_eth_irq_affinity() {
 	local dev=$1
+	local lo=${2-cpu_lo}
+	local up=${3-cpu_up}
 	for suffix in rx tx; do
-		irq_list=`get_dev_irq_list "$dev-$suffix"`
-		set_irq_list_affinity "$irq_list"
+		local irq_list=`get_dev_irq_list "$dev-$suffix"`
+		set_irq_list_affinity "$lo" "$up" "$irq_list"
 	done
 }
 
@@ -57,8 +62,10 @@ get_eth_irq_affinity() {
 
 set_dev_irq_affinity() {
 	local dev=$1
-	irq_list=`get_dev_irq_list "$dev"`
-	set_irq_list_affinity "$irq_list"
+	local lo=${2-cpu_lo}
+	local up=${3-cpu_up}
+	local irq_list=`get_dev_irq_list "$dev"`
+	set_irq_list_affinity "$lo" "$up" "$irq_list"
 }
 
 get_dev_irq_affinity() {
@@ -70,4 +77,5 @@ get_dev_irq_affinity() {
 if [ $1 = "-f" ]; then
 	shift
 	$*
+	exit
 fi
