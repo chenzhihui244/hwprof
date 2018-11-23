@@ -46,15 +46,15 @@ set_affinity()
 {
 	local DEV=$1
 	local DIR=$2
-	local VEC=$3
+	local num=$3
 	local IRQ=$4
 	local START=$5
 	local CORETOTAL=`nproc`
 	#local POS=$[($VEC+$START+$COREOFF)%$CORENUM]
-	local POS=$[(($VEC%$CORENUM)+$COREOFF+$START)%$CORETOTAL]
+	local POS=$[(($num%$CORENUM)+$COREOFF+$START)%$CORETOTAL]
 
 	MASK=$((1<<$POS))
-	printf "DEV:%s DIR:%s VEC:%d IRQ:%d OFF:%d POS:%d MASK:0x%X\n" $DEV $DIR $VEC $IRQ $COREOFF $POS $MASK
+	printf "DEV:%s DIR:%s num:%d IRQ:%d OFF:%d POS:%d MASK:0x%X\n" $DEV $DIR $num $IRQ $COREOFF $POS $MASK
 	TMP=`printf "%X" $MASK`
 	echo $TMP|sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
 }
@@ -75,23 +75,32 @@ set_affinity_dir()
 	fi
 
 	((LAST=MAX-1))
-	for VEC in `seq 0 1 $LAST`
-	do
-		IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR$VEC"$"  | cut  -d:  -f1 | sed "s/ //g"`
+	(( num=0 ))
+	for i in `seq 0 1 $LAST`; do
+		IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR$i"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ $FIRST
+			for VEC in $IRQ; do
+			set_affinity $DEV $DIR $num $VEC $FIRST
+			(( num++ ))
+			done
 			continue
 		fi
 
 		IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR-$VEC"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ $FIRST
+			for VEC in $IRQ; do
+			set_affinity $DEV $DIR $num $VEC $FIRST
+			(( num++ ))
+			done
 			continue
 		fi
 
 		IRQ=`cat /proc/interrupts | egrep -i $DEV:v$VEC-$DIR"$"  | cut  -d:  -f1 | sed "s/ //g"`
 		if [ -n  "$IRQ" ]; then
-			set_affinity $DEV $DIR $VEC $IRQ $FIRST
+			for VEC in $IRQ; do
+			set_affinity $DEV $DIR $num $VEC $FIRST
+			(( num++ ))
+			done
 			continue
 		fi
 	done

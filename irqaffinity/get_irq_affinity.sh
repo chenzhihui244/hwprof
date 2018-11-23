@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/bin/bash
+
 # setting up irq affinity according to /proc/interrupts
 # 2008-11-25 Robert Olsson
 # 2009-02-19 updated by Jesse Brandeburg
@@ -24,13 +25,19 @@
 
 get_affinity()
 {
-	echo -n "$DEV-$DIR: VEC=$VEC,IRQ=$IRQ,MASK=0x"
-    cat /proc/irq/$IRQ/smp_affinity
-#    TMP=`printf "%X" $MASK`
-#    echo $TMP |sed -e ':a' -e 's/\(.*[0-9]\)\([0-9]\{8\}\)/\1,\2/;ta' > /proc/irq/$IRQ/smp_affinity
-    #echo $DEV mask=$MASK for /proc/irq/$IRQ/smp_affinity
-    #echo $MASK > /proc/irq/$IRQ/smp_affinity
+	local DEV=$1
+	local DIR=$2
+	local IRQ=$3
+	local VEC=$4
+
+	for i in $IRQ; do
+		#echo $i
+		echo -n "$DEV-$DIR: VEC=$VEC,IRQ=$i,MASK=0x"
+		cat /proc/irq/$i/smp_affinity
+	done
 }
+#		echo -n "$DEV-$DIR: VEC=$VEC,IRQ=$IRQ,MASK=0x"
+#		cat /proc/irq/$IRQ/smp_affinity
 
 if [ "$1" = "" ] ; then
         echo "Description:"
@@ -53,37 +60,22 @@ fi
 #
 # Set up the desired devices.
 #
-i=0
-for DEV in $*
-do
-  for DIR in rx tx TxRx
-  do
+#set -x
+for DEV in $*; do
+  for DIR in rx tx TxRx; do
      MAX=`grep $DEV-$DIR /proc/interrupts | wc -l`
      if [ "$MAX" == "0" ] ; then
-       MAX=`egrep -i "$DEV:.*$DIR" /proc/interrupts | wc -l`
-     fi
-     if [ "$MAX" == "0" ] ; then
        echo no $DIR vectors found on $DEV
-       let i=i+1
        continue
-       #exit 1
+     else
+	echo "$MAX irqs for $DEV-$DIR"
      fi
-     for VEC in `seq 0 1 $MAX`
-     do
+     for VEC in `seq 0 1 $MAX`; do
         IRQ=`cat /proc/interrupts | grep -i $DEV-$DIR$VEC"$"  | cut  -d:  -f1 | sed "s/ //g"`
         if [ -n  "$IRQ" ]; then
-          get_affinity
-        else
-           IRQ=`cat /proc/interrupts | egrep -i $DEV:v$VEC-$DIR"$"  | cut  -d:  -f1 | sed "s/ //g"`
-           if [ -n  "$IRQ" ]; then
-             get_affinity
-           fi
+          get_affinity $DEV $DIR "$IRQ" $VEC
         fi
      done
   done
 done
-if [ $i -eq 3 ]
-then
-	echo "something is wrong,pls check the config script! we need change it to adapt the system."
-fi
 
