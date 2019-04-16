@@ -62,5 +62,5 @@ set_irq_affinity() {
 	done < $interrupt_file
 }
 
-#dump_irq_affinity $device
-set_irq_affinity $device $core_num $start_core
+dump_irq_affinity $device
+#set_irq_affinity $device $core_num $start_core
