@@ -44,9 +44,9 @@ hwinfo_test()
 	lspci -vvnn > $LOG_DIR/lspci-vvnn.txt
 	lspci -tv > $LOG_DIR/lspci-tv.txt
 	echo
-	echo "9.gcc --version"
+	echo "9.gcc -v"
 	echo
-	gcc --version > $LOG_DIR/gcc-v.txt
+	gcc -v > $LOG_DIR/gcc-v.txt
 	echo
 	echo "10.ld --version"
 	echo
