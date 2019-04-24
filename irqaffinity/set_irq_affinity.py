@@ -30,10 +30,8 @@ def get_irq_list(dev):
 	return irq_list
 
 def write_irq_mask(irq, mask):
-	if mask.startswith('0x') or mask.startswith('0X'):
-		mask = mask[2:]
-	mask = mask.zfill(16)
-	cmd_str = "echo " + mask[0:8] + "," + mask[8:16] + " > " + "/proc/irq/" + str(irq) + "/smp_affinity"
+	mask = mask.zfill(32)
+	cmd_str = "echo " + mask[0:8] + "," + mask[8:16] + "," + mask[16:24] + "," + mask[24:32] + " > " + "/proc/irq/" + str(irq) + "/smp_affinity"
 	print("cmdstr:%s" % (cmd_str))
 	os.system(cmd_str)
 
@@ -43,16 +41,16 @@ def set_dev_cpu_affinity(irq_list, cpu_list, mode):
 		for irq in irq_list:
 			cpu_mask = 0
 			for cpu in cpu_list:
-				cpu_mask |= (0x01 << cpu)
-			cpu_mask_str = str(hex(cpu_mask))
+				cpu_mask |= (0x01L << cpu)
+			cpu_mask_str = "%x" % cpu_mask
 			write_irq_mask(irq, cpu_mask_str)
 		return
 
 	cpu_num = len(cpu_list)
 	cpu_index = 0
 	for irq in irq_list:
-		cpu_mask = 0x01 << cpu_list[cpu_index]
-		cpu_mask_str = str(hex(cpu_mask))
+		cpu_mask = 0x01L << cpu_list[cpu_index]
+		cpu_mask_str = "%x" % cpu_mask
 		write_irq_mask(irq, cpu_mask_str)
 
 		cpu_index += 1
