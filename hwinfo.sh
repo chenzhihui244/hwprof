@@ -108,6 +108,7 @@ hwinfo_test()
 	echo "25. zcat /proc/config.gz > $LOG_DIR/kernel.config"
 	echo
 	zcat /proc/config.gz > $LOG_DIR/kernel.config
+	cp /boot/config-`uname -r` $LOG_DIR
 	echo
 	echo "26.cat /etc/*release*"
 	echo
@@ -126,6 +127,19 @@ hwinfo_test()
 	echo "lsblk"
 	echo
 	lsblk > $LOG_DIR/lsblk.txt
+
+	echo
+	echo "transparent huge page setting"
+	echo
+	echo "/sys/kernel/mm/transparent_hugepage/enabled" > $LOG_DIR/transparent_hugepage.txt
+	cat /sys/kernel/mm/transparent_hugepage/enabled >> $LOG_DIR/transparent_hugepage.txt
+	echo "/sys/kernel/mm/transparent_hugepage/defrag" >> $LOG_DIR/transparent_hugepage.txt
+	cat /sys/kernel/mm/transparent_hugepage/defrag >> $LOG_DIR/transparent_hugepage.txt
+
+	echo
+	echo "ulimt config"
+	echo
+	ulimit -a > $LOG_DIR/ulimit.txt
 }
 
 LOG_DIR=`pwd`/hwinfo-`date +%Y%m%d%H%M`
