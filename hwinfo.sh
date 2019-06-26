@@ -140,6 +140,11 @@ hwinfo_test()
 	echo "ulimt config"
 	echo
 	ulimit -a > $LOG_DIR/ulimit.txt
+
+	echo
+	echo "schedstat info"
+	echo
+    cat /proc/schedstat > $LOG_DIR/schedstat
 }
 
 LOG_DIR=`pwd`/hwinfo-`date +%Y%m%d%H%M`
